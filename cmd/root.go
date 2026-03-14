@@ -19,7 +19,7 @@ var rootCmd = &cobra.Command{
 
 		llamaPath, err := llm.FindLlamaCLI()
 		if err != nil {
-			return fmt.Errorf("llama-cli not found in ~/.ai-sh/bin/. Run: curl -fsSL https://raw.githubusercontent.com/user/ai-sh/main/install.sh | bash")
+			return fmt.Errorf("llama-cli not found in ~/.ai-sh/bin/. Run: curl -fsSL https://raw.githubusercontent.com/30Signals/ai-sh/main/install.sh | bash")
 		}
 
 		modelPath, err := llm.FindModel()

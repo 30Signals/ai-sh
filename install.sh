@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-REPO="user/ai-sh"
+REPO="30Signals/ai-sh"
 INSTALL_DIR="$HOME/.ai-sh"
 BIN_DIR="$INSTALL_DIR/bin"
 MODELS_DIR="$INSTALL_DIR/models"

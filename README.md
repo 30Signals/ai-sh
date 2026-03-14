@@ -13,7 +13,7 @@ Shows the generated command in a confirmation box before running anything.
 ## Install
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/user/ai-sh/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/30Signals/ai-sh/main/install.sh | bash
 ```
 
 This installs:
