@@ -151,6 +151,7 @@ func stripMarkdown(s string) string {
 	s = strings.Trim(s, "`")
 	for _, line := range strings.Split(s, "\n") {
 		line = strings.TrimSpace(line)
+		line = strings.TrimPrefix(line, "$ ")
 		if line != "" {
 			return line
 		}
