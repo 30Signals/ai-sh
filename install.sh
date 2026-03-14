@@ -131,12 +131,12 @@ else
   echo "  4) Skip      - I'll place a model manually"
   echo ""
 
-  if [ -t 0 ]; then
-    read -r -p "Enter choice [1-4] (default: 3): " MODEL_CHOICE
-  else
-    # Non-interactive (piped install): respect env var or default to deepseek
-    MODEL_CHOICE="${MODEL_CHOICE:-3}"
-    echo "Non-interactive mode, using choice: $MODEL_CHOICE"
+  if [ -z "${MODEL_CHOICE:-}" ]; then
+    if [ -t 0 ]; then
+      read -r -p "Enter choice [1-4] (default: 3): " MODEL_CHOICE
+    elif [ -e /dev/tty ]; then
+      read -r -p "Enter choice [1-4] (default: 3): " MODEL_CHOICE </dev/tty
+    fi
   fi
 
   MODEL_CHOICE="${MODEL_CHOICE:-3}"
