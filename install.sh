@@ -111,20 +111,20 @@ else
   echo ""
   echo "Choose a model to download:"
   echo "  1) Tiny      - TinyLlama 1.1B Q4_K_M      (~670MB)  fastest, lowest RAM"
-  echo "  2) Qwen      - Qwen2.5-Coder 1.5B Q4_K_M  (~1.0GB)  recommended for shell commands"
-  echo "  3) DeepSeek  - DeepSeek-Coder 1.3B Q4_K_M (~800MB)  good for code tasks"
+  echo "  2) Qwen      - Qwen2.5-Coder 1.5B Q4_K_M  (~1.0GB)  good for shell commands"
+  echo "  3) DeepSeek  - DeepSeek-Coder 1.3B Q4_K_M (~800MB)  recommended (default)"
   echo "  4) Skip      - I'll place a model manually"
   echo ""
 
   if [ -t 0 ]; then
-    read -r -p "Enter choice [1-4] (default: 2): " MODEL_CHOICE
+    read -r -p "Enter choice [1-4] (default: 3): " MODEL_CHOICE
   else
-    # Non-interactive (piped install): respect env var or default to qwen
-    MODEL_CHOICE="${MODEL_CHOICE:-2}"
+    # Non-interactive (piped install): respect env var or default to deepseek
+    MODEL_CHOICE="${MODEL_CHOICE:-3}"
     echo "Non-interactive mode, using choice: $MODEL_CHOICE"
   fi
 
-  MODEL_CHOICE="${MODEL_CHOICE:-2}"
+  MODEL_CHOICE="${MODEL_CHOICE:-3}"
 
   case "$MODEL_CHOICE" in
     1)

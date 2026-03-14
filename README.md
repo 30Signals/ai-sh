@@ -26,8 +26,8 @@ This installs:
 | # | Model | Size | Notes |
 |---|-------|------|-------|
 | 1 | TinyLlama 1.1B Q4_K_M | ~670 MB | Fastest, lowest RAM |
-| 2 | Qwen2.5-Coder 1.5B Q4_K_M | ~1.0 GB | **Recommended** |
-| 3 | DeepSeek-Coder 1.3B Q4_K_M | ~800 MB | Good for code tasks |
+| 2 | Qwen2.5-Coder 1.5B Q4_K_M | ~1.0 GB | Good for shell commands |
+| 3 | DeepSeek-Coder 1.3B Q4_K_M | ~800 MB | **Default** — best balance |
 
 ## Usage
 
