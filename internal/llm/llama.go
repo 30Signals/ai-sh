@@ -64,7 +64,7 @@ func FindModel() (string, error) {
 
 // RunInference runs llama-cli with the given prompt and returns the generated command.
 func RunInference(llamaPath, modelPath, userPrompt string) (string, error) {
-	systemPrompt := "Convert the instruction to a single bash command. Output ONLY the command, no explanation, no markdown, no backticks."
+	systemPrompt := buildSystemPrompt()
 
 	args := []string{
 		"-m", modelPath,
@@ -96,6 +96,18 @@ func RunInference(llamaPath, modelPath, userPrompt string) (string, error) {
 	output = stripMarkdown(output)
 
 	return output, nil
+}
+
+// buildSystemPrompt constructs the system prompt with shell context.
+func buildSystemPrompt() string {
+	var sb strings.Builder
+	sb.WriteString("Convert the instruction to a single POSIX sh command. Output ONLY the command, no explanation, no markdown, no backticks.\n")
+
+	if cwd, err := os.Getwd(); err == nil {
+		sb.WriteString("Current directory: " + cwd + "\n")
+	}
+
+	return sb.String()
 }
 
 // cleanOutput extracts the model reply from llama-cli conversation output.

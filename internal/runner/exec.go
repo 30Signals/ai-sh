@@ -1,6 +1,7 @@
 package runner
 
 import (
+	"bufio"
 	"fmt"
 	"os"
 	"os/exec"
@@ -9,34 +10,50 @@ import (
 	"unsafe"
 )
 
-// ConfirmAndRun shows the command in a box, prompts the user, and runs it if confirmed.
-func ConfirmAndRun(command string) error {
-	fmt.Printf("\nai:\n\033[1m%s\033[0m\n\n", command)
-	fmt.Print("\033[1m↵\033[0m run   \033[1me\033[0m edit   \033[1mn\033[0m cancel  ")
+// InferFunc re-runs inference with a new prompt and returns the command.
+type InferFunc func(prompt string) (string, error)
 
-	key, err := readKey()
-	fmt.Println()
-	if err != nil {
-		return err
-	}
+// ConfirmAndRun shows the command, lets the user run, refine, or cancel.
+func ConfirmAndRun(command, originalPrompt string, infer InferFunc) error {
+	for {
+		fmt.Printf("\nai:\n\033[1m%s\033[0m\n\n", command)
+		fmt.Print("\033[1m↵\033[0m run   \033[1me\033[0m refine   \033[1mn\033[0m cancel  ")
 
-	switch key {
-	case '\r', '\n': // Enter — run as-is
-		return runCommand(command)
-	case 'e', 'E': // Edit in $EDITOR, then run
-		edited, err := editCommand(command)
+		key, err := readKey()
+		fmt.Println()
 		if err != nil {
 			return err
 		}
-		edited = strings.TrimSpace(edited)
-		if edited == "" {
+
+		switch key {
+		case '\r', '\n':
+			return runCommand(command)
+
+		case 'e', 'E':
+			fmt.Print("Refine: ")
+			line, err := bufio.NewReader(os.Stdin).ReadString('\n')
+			if err != nil {
+				return err
+			}
+			feedback := strings.TrimSpace(line)
+			if feedback == "" {
+				continue
+			}
+			refined := originalPrompt + " — " + feedback
+			fmt.Println("Thinking...")
+			command, err = infer(refined)
+			if err != nil {
+				return err
+			}
+			if command == "" {
+				fmt.Println("Model returned nothing, try again.")
+				continue
+			}
+
+		default:
 			fmt.Println("Cancelled.")
 			return nil
 		}
-		return runCommand(edited)
-	default: // anything else — cancel
-		fmt.Println("Cancelled.")
-		return nil
 	}
 }
 
@@ -61,46 +78,6 @@ func readKey() (byte, error) {
 	buf := make([]byte, 1)
 	os.Stdin.Read(buf)
 	return buf[0], nil
-}
-
-// editCommand opens $EDITOR with the command in a temp file and returns the edited result.
-func editCommand(command string) (string, error) {
-	tmp, err := os.CreateTemp("", "ai-*.sh")
-	if err != nil {
-		return "", err
-	}
-	defer os.Remove(tmp.Name())
-
-	if _, err := tmp.WriteString(command + "\n"); err != nil {
-		return "", err
-	}
-	tmp.Close()
-
-	editor := os.Getenv("EDITOR")
-	if editor == "" {
-		editor = "vi"
-	}
-
-	cmd := exec.Command(editor, tmp.Name())
-	cmd.Stdin = os.Stdin
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	if err := cmd.Run(); err != nil {
-		return "", err
-	}
-
-	data, err := os.ReadFile(tmp.Name())
-	if err != nil {
-		return "", err
-	}
-	// Return first non-empty line
-	for _, line := range strings.Split(string(data), "\n") {
-		line = strings.TrimSpace(line)
-		if line != "" && !strings.HasPrefix(line, "#") {
-			return line, nil
-		}
-	}
-	return "", nil
 }
 
 func runCommand(command string) error {

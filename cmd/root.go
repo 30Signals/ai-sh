@@ -27,7 +27,11 @@ var rootCmd = &cobra.Command{
 			return fmt.Errorf("no .gguf model found in ~/.ai-sh/models/. Download a model and place it there")
 		}
 
-		command, err := llm.RunInference(llamaPath, modelPath, prompt)
+		infer := func(p string) (string, error) {
+			return llm.RunInference(llamaPath, modelPath, p)
+		}
+
+		command, err := infer(prompt)
 		if err != nil {
 			return err
 		}
@@ -35,7 +39,7 @@ var rootCmd = &cobra.Command{
 			return fmt.Errorf("model returned empty output. Try rephrasing")
 		}
 
-		return runner.ConfirmAndRun(command)
+		return runner.ConfirmAndRun(command, prompt, infer)
 	},
 }
 
