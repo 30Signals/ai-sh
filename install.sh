@@ -49,9 +49,24 @@ else
   fi
 
   echo "Downloading ai binary..."
-  curl -fsSL "$AI_URL" -o "$BIN_DIR/ai"
-  chmod +x "$BIN_DIR/ai"
-  echo "  -> $BIN_DIR/ai"
+  if curl -fsSL "$AI_URL" -o "$BIN_DIR/ai" 2>/dev/null; then
+    chmod +x "$BIN_DIR/ai"
+    echo "  -> $BIN_DIR/ai"
+  else
+    echo "No release found — building from source..."
+    if ! command -v go &>/dev/null; then
+      echo "Error: Go is required to build from source. Install from https://go.dev/dl/"
+      exit 1
+    fi
+    BUILD_TMPDIR="$(mktemp -d)"
+    trap 'rm -rf "$BUILD_TMPDIR"' EXIT
+    git clone --depth 1 "https://github.com/$REPO.git" "$BUILD_TMPDIR/ai-sh"
+    cd "$BUILD_TMPDIR/ai-sh"
+    go build -ldflags "-s -w" -o "$BIN_DIR/ai" .
+    chmod +x "$BIN_DIR/ai"
+    cd -
+    echo "  -> $BIN_DIR/ai (built from source)"
+  fi
 fi
 
 # --- Download llama-cli ---
