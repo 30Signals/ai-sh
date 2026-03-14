@@ -126,8 +126,8 @@ else
   echo ""
   echo "Choose a model to download:"
   echo "  1) Tiny      - TinyLlama 1.1B Q4_K_M      (~670MB)  fastest, lowest RAM"
-  echo "  2) Qwen      - Qwen2.5-Coder 1.5B Q4_K_M  (~1.0GB)  recommended (default)"
-  echo "  3) DeepSeek  - DeepSeek-Coder 1.3B Q4_K_M (~800MB)  good for code tasks"
+  echo "  2) Qwen 1.5B - Qwen2.5-Coder 1.5B Q4_K_M  (~1.0GB)  recommended (default)"
+  echo "  3) Qwen 3B   - Qwen2.5-Coder 3B Q4_K_M   (~2.0GB)  smarter, still fast"
   echo "  4) Skip      - I'll place a model manually"
   echo ""
 
@@ -153,9 +153,9 @@ else
       MODEL_URL="https://huggingface.co/Qwen/Qwen2.5-Coder-1.5B-Instruct-GGUF/resolve/main/qwen2.5-coder-1.5b-instruct-q4_k_m.gguf"
       ;;
     3)
-      MODEL_NAME="DeepSeek-Coder 1.3B"
-      MODEL_FILE="deepseek-coder-1.3b-instruct.Q4_K_M.gguf"
-      MODEL_URL="https://huggingface.co/TheBloke/deepseek-coder-1.3b-instruct-GGUF/resolve/main/deepseek-coder-1.3b-instruct.Q4_K_M.gguf"
+      MODEL_NAME="Qwen2.5-Coder 3B"
+      MODEL_FILE="qwen2.5-coder-3b-instruct-q4_k_m.gguf"
+      MODEL_URL="https://huggingface.co/Qwen/Qwen2.5-Coder-3B-Instruct-GGUF/resolve/main/qwen2.5-coder-3b-instruct-q4_k_m.gguf"
       ;;
     4|[sS]kip)
       echo "Skipping model download."
