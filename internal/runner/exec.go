@@ -8,10 +8,27 @@ import (
 	"strings"
 	"syscall"
 	"unsafe"
+
+	"github.com/user/ai-sh/internal/llm"
 )
 
 // InferFunc re-runs inference with a new prompt and returns the command.
 type InferFunc func(prompt string) (string, error)
+
+// Handle dispatches a model reply: prose answers are printed, commands go
+// through the confirm loop.
+func Handle(reply, originalPrompt string, infer InferFunc) error {
+	if text, ok := llm.SplitAnswer(reply); ok {
+		printAnswer(text)
+		return nil
+	}
+	return ConfirmAndRun(reply, originalPrompt, infer)
+}
+
+// printAnswer shows a prose reply, which is never offered for execution.
+func printAnswer(text string) {
+	fmt.Printf("\nai:\n%s\n", text)
+}
 
 // ConfirmAndRun shows the command, lets the user run, refine, or cancel.
 func ConfirmAndRun(command, originalPrompt string, infer InferFunc) error {
@@ -48,6 +65,11 @@ func ConfirmAndRun(command, originalPrompt string, infer InferFunc) error {
 			if command == "" {
 				fmt.Println("Model returned nothing, try again.")
 				continue
+			}
+			// The refinement may have turned the request into a question.
+			if text, ok := llm.SplitAnswer(command); ok {
+				printAnswer(text)
+				return nil
 			}
 
 		default:
