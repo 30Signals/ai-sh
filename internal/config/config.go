@@ -71,13 +71,23 @@ var Presets = map[string]Preset{
 	},
 }
 
-// Path returns the config file location.
-func Path() (string, error) {
+// Dir returns the directory holding ai-sh state: the config file, the local
+// runtime, and the memory file.
+func Dir() (string, error) {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(home, ".ai-sh", "config.json"), nil
+	return filepath.Join(home, ".ai-sh"), nil
+}
+
+// Path returns the config file location.
+func Path() (string, error) {
+	dir, err := Dir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(dir, "config.json"), nil
 }
 
 // Load reads the config file, then applies environment overrides. A missing

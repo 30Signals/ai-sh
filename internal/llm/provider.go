@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/user/ai-sh/internal/config"
+	"github.com/user/ai-sh/internal/memory"
 )
 
 // Provider turns a natural language instruction into a shell command.
@@ -29,13 +30,19 @@ func New(cfg config.Config) (Provider, error) {
 	return newCloud(resolved)
 }
 
-// buildSystemPrompt constructs the system prompt with shell context.
+// buildSystemPrompt constructs the system prompt with shell context and the
+// user's remembered notes. It is read fresh on every call, so an edit to the
+// memory file takes effect on the next inference, including a refinement.
 func buildSystemPrompt() string {
 	var sb strings.Builder
 	sb.WriteString("Convert the instruction to a single POSIX sh command. Output ONLY the command, no explanation, no markdown, no backticks.\n")
 
 	if cwd, err := os.Getwd(); err == nil {
 		sb.WriteString("Current directory: " + cwd + "\n")
+	}
+
+	if notes := memory.Prompt(); notes != "" {
+		sb.WriteString(notes)
 	}
 
 	return sb.String()
