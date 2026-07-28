@@ -86,7 +86,8 @@ func FindModel() (string, error) {
 	return "", fmt.Errorf("no model found in ~/.ai-sh/models/")
 }
 
-// Generate runs llama-cli with the given prompt and returns the command.
+// Generate runs llama-cli with the given prompt and returns the reply: a bare
+// command, or prose carrying AnswerPrefix when the request was not a shell task.
 func (l *local) Generate(userPrompt string) (string, error) {
 	systemPrompt := buildSystemPrompt()
 
@@ -94,7 +95,7 @@ func (l *local) Generate(userPrompt string) (string, error) {
 		"-m", l.modelPath,
 		"-sys", systemPrompt,
 		"-p", userPrompt,
-		"-n", "100",
+		"-n", "220",
 		"--temp", "0.1",
 		"-ngl", "0",
 		"--no-display-prompt",
@@ -116,10 +117,7 @@ func (l *local) Generate(userPrompt string) (string, error) {
 		return "", fmt.Errorf("running inference: llama-cli failed: %w", err)
 	}
 
-	output := cleanOutput(stdout.String(), userPrompt)
-	output = stripMarkdown(output)
-
-	return output, nil
+	return formatReply(cleanOutput(stdout.String(), userPrompt)), nil
 }
 
 // cleanOutput extracts the model reply from llama-cli conversation output.
