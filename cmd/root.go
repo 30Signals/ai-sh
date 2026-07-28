@@ -78,15 +78,15 @@ var rootCmd = &cobra.Command{
 			return err
 		}
 
-		command, err := provider.Generate(prompt)
+		reply, err := provider.Generate(prompt)
 		if err != nil {
 			return err
 		}
-		if command == "" {
+		if reply == "" {
 			return fmt.Errorf("model returned empty output. Try rephrasing")
 		}
 
-		return runner.ConfirmAndRun(command, prompt, provider.Generate)
+		return runner.Handle(reply, prompt, provider.Generate)
 	},
 }
 
