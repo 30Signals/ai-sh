@@ -73,7 +73,8 @@ Override per call, or skip the file entirely:
 ai --provider groq "tail the nginx error log"
 ai --provider mistral --model devstral-small-latest "list open ports"
 
-export AI_SH_PROVIDER=mistral   # also: AI_SH_MODEL, AI_SH_BASE_URL, AI_SH_API_KEY
+export AI_SH_PROVIDER=mistral   # also: AI_SH_MODEL, AI_SH_BASE_URL, AI_SH_API_KEY,
+                                #       AI_SH_HISTORY, AI_SH_HISTORY_TURNS
 ```
 
 If `api_key` is empty, ai-sh falls back to the provider's usual variable —
@@ -95,8 +96,47 @@ df -h
 ```
 
 - **↵** — run the command
-- **e** — give feedback to refine it (re-runs inference with extra context)
+- **e** — give feedback to refine it; the model sees the command it just wrote, so
+  "use find instead" corrects that command rather than re-answering from scratch
 - **n** — cancel
+
+## Session history
+
+Off by default. Once enabled, a follow-up in the same terminal can refer back to
+what came before:
+
+```
+$ ai list the files here
+ai:
+ls -la
+
+$ ai now only the pdfs
+↳ 1 earlier turn from this terminal (ai --new to reset)
+ai:
+ls -la *.pdf
+```
+
+Turn it on in `ai --setup`, or set `"history": true` in `~/.ai-sh/config.json`.
+It is a one-time setting, not a per-call flag — follow-up invocations stay bare.
+
+```bash
+ai --new              # forget this terminal's history
+ai --status           # show whether history is on, and how many turns are live
+```
+
+Details worth knowing:
+
+- **Cloud backends only.** Small local models tend to answer *worse* with several
+  turns ahead of the instruction, and every local call re-processes the whole
+  transcript on CPU. Set it with the local backend and `--status` will say
+  `off (not supported by the local backend)`.
+- **Scoped to the terminal and the directory.** History is keyed to the shell it
+  ran in, expires after two hours, and is dropped when you `cd` elsewhere.
+- **Stored on disk** at `~/.ai-sh/sessions/` (mode `0600`), holding past
+  instructions and the commands they produced. Secret-shaped values
+  (`API_KEY=…`, `Authorization: Bearer …`, `--password …`) are redacted before
+  writing, but treat the directory as sensitive regardless. Prompts also get
+  larger, so cloud calls cost a little more.
 
 ## Requirements
 
