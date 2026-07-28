@@ -24,7 +24,11 @@ make build
 HOME=/tmp/fakehome LOCAL_BINARY=dist/ai AI_SH_BACKEND=cloud ./install.sh
 ```
 
-`install.sh` also honors `AI_SH_BACKEND` (`local`/`cloud`), `MODEL_CHOICE` (1–4, implies local), `AI_VERSION`, and `LLAMA_TAG`. It reads answers through `ask`, which falls back to `/dev/tty` for the piped-into-bash case and gives up quietly when `have_tty` fails (containers have a `/dev/tty` that cannot be opened).
+`install.sh` also honors `AI_SH_BACKEND` (`local`/`cloud`), `MODEL_CHOICE` (1–4, implies local), `AI_VERSION`, and `LLAMA_TAG`.
+
+`AI_VERSION` defaults to `KNOWN_GOOD_VERSION` at the top of `install.sh`, not `latest` — the script on main must never pair itself with an older published binary that lacks a feature it calls. Bump that constant in the same commit that makes `install.sh` depend on a new binary feature. As a backstop, `configure_cloud` greps `ai --help` for `--setup` and exits with a version-mismatch message rather than letting the flag fail as unknown; add a similar check for any future feature the script comes to rely on.
+
+It reads answers through `ask`, which falls back to `/dev/tty` for the piped-into-bash case and gives up quietly when `have_tty` fails (containers have a `/dev/tty` that cannot be opened).
 
 ## Architecture
 
