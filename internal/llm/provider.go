@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/user/ai-sh/internal/config"
+	"github.com/user/ai-sh/internal/memory"
 )
 
 // Provider turns a natural language instruction into a shell command.
@@ -46,8 +47,11 @@ func SplitAnswer(reply string) (string, bool) {
 }
 
 // buildSystemPrompt constructs the system prompt: command generation rules
-// first, then the prose escape hatch, then this machine's context. Small local
-// models follow it better with the examples at the end, closest to the reply.
+// first, then the prose escape hatch, then this machine's context and the
+// user's remembered notes. Small local models follow it better with the
+// examples at the end, closest to the reply. Memory is read fresh on every
+// call, so an edit to the file takes effect on the next inference, including a
+// refinement.
 func buildSystemPrompt() string {
 	var sb strings.Builder
 
@@ -74,6 +78,12 @@ If the request is NOT a shell task - a factual question, "what does this flag do
 	sb.WriteString("- OS: " + osName() + ", " + userlandNote() + "\n")
 	if shell := os.Getenv("SHELL"); shell != "" {
 		sb.WriteString("- Login shell: " + shell + " (commands run under /bin/sh)\n")
+	}
+
+	// After the machine context and before the examples: the notes are context,
+	// and the examples have to stay closest to the reply.
+	if notes := memory.Prompt(); notes != "" {
+		sb.WriteString("\n" + notes)
 	}
 
 	sb.WriteString(`
