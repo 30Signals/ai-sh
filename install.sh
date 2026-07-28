@@ -33,6 +33,24 @@ echo "Detected: $OS_NAME/$ARCH_NAME"
 # Create directories
 mkdir -p "$BIN_DIR" "$MODELS_DIR"
 
+# have_tty reports whether /dev/tty can actually be opened. It exists but is
+# unusable in containers and CI, so -e alone is not enough.
+have_tty() {
+  [ -e /dev/tty ] && (exec </dev/tty) 2>/dev/null
+}
+
+# ask <prompt> — reads one line from the terminal, even when this script is
+# piped into bash. Echoes an empty string when no terminal is available.
+ask() {
+  local answer=""
+  if [ -t 0 ]; then
+    read -r -p "$1" answer || true
+  elif have_tty; then
+    read -r -p "$1" answer </dev/tty || true
+  fi
+  echo "$answer"
+}
+
 # --- Download ai binary ---
 if [ -n "${LOCAL_BINARY:-}" ]; then
   # Local test mode: use a pre-built binary instead of downloading from GitHub
@@ -69,60 +87,84 @@ else
   fi
 fi
 
-# --- Download llama-cli ---
-LLAMA_TAG="${LLAMA_TAG:-}"
-if [ -z "$LLAMA_TAG" ]; then
-  echo "Fetching latest llama.cpp release..."
-  LLAMA_TAG="$(curl -sL "https://api.github.com/repos/ggerganov/llama.cpp/releases?per_page=1" \
-    | python3 -c "import sys,json; print(json.load(sys.stdin)[0]['tag_name'])")"
-  echo "  -> $LLAMA_TAG"
-fi
-
-if [ "$OS_NAME" = "darwin" ]; then
-  if [ "$ARCH_NAME" = "arm64" ]; then
-    LLAMA_FILE="llama-${LLAMA_TAG}-bin-macos-arm64.tar.gz"
+# --- Choose backend ---
+# Cloud skips the llama-cli and model downloads entirely (~1GB+ saved).
+BACKEND="${AI_SH_BACKEND:-}"
+if [ -z "$BACKEND" ]; then
+  if [ -n "${MODEL_CHOICE:-}" ]; then
+    # An explicit model choice means the caller wants the local runtime.
+    BACKEND="local"
   else
-    LLAMA_FILE="llama-${LLAMA_TAG}-bin-macos-x64.tar.gz"
-  fi
-else
-  if [ "$ARCH_NAME" = "arm64" ]; then
-    LLAMA_FILE="llama-${LLAMA_TAG}-bin-ubuntu-arm64.tar.gz"
-  else
-    LLAMA_FILE="llama-${LLAMA_TAG}-bin-ubuntu-x64.tar.gz"
+    echo ""
+    echo "Where should ai-sh run the model?"
+    echo "  1) Local - llama.cpp on this machine, offline, no API key (~1GB download)"
+    echo "  2) Cloud - Mistral, Groq, OpenRouter, Cerebras, or any OpenAI-compatible API"
+    echo ""
+    BACKEND_CHOICE="$(ask 'Enter choice [1-2] (default: 1): ')"
+    case "${BACKEND_CHOICE:-1}" in
+      2|cloud|Cloud) BACKEND="cloud" ;;
+      *)             BACKEND="local" ;;
+    esac
   fi
 fi
 
-LLAMA_URL="https://github.com/ggerganov/llama.cpp/releases/download/${LLAMA_TAG}/${LLAMA_FILE}"
+install_llama_cli() {
+  LLAMA_TAG="${LLAMA_TAG:-}"
+  if [ -z "$LLAMA_TAG" ]; then
+    echo "Fetching latest llama.cpp release..."
+    LLAMA_TAG="$(curl -sL "https://api.github.com/repos/ggerganov/llama.cpp/releases?per_page=1" \
+      | python3 -c "import sys,json; print(json.load(sys.stdin)[0]['tag_name'])")"
+    echo "  -> $LLAMA_TAG"
+  fi
 
-echo "Downloading llama-cli..."
-LLAMA_TMPDIR="$(mktemp -d)"
-trap 'rm -rf "$LLAMA_TMPDIR"' EXIT
+  if [ "$OS_NAME" = "darwin" ]; then
+    if [ "$ARCH_NAME" = "arm64" ]; then
+      LLAMA_FILE="llama-${LLAMA_TAG}-bin-macos-arm64.tar.gz"
+    else
+      LLAMA_FILE="llama-${LLAMA_TAG}-bin-macos-x64.tar.gz"
+    fi
+  else
+    if [ "$ARCH_NAME" = "arm64" ]; then
+      LLAMA_FILE="llama-${LLAMA_TAG}-bin-ubuntu-arm64.tar.gz"
+    else
+      LLAMA_FILE="llama-${LLAMA_TAG}-bin-ubuntu-x64.tar.gz"
+    fi
+  fi
 
-curl -fL --progress-bar "$LLAMA_URL" -o "$LLAMA_TMPDIR/llama.tar.gz"
-mkdir -p "$LLAMA_TMPDIR/llama"
-tar -xzf "$LLAMA_TMPDIR/llama.tar.gz" -C "$LLAMA_TMPDIR/llama" 2>/dev/null || true
+  LLAMA_URL="https://github.com/ggerganov/llama.cpp/releases/download/${LLAMA_TAG}/${LLAMA_FILE}"
 
-# Find llama-cli in extracted files
-LLAMA_BIN="$(find "$LLAMA_TMPDIR/llama" -name "llama-cli" -type f | head -1)"
-if [ -z "$LLAMA_BIN" ]; then
-  echo "Error: llama-cli not found in downloaded archive"
-  exit 1
-fi
+  echo "Downloading llama-cli..."
+  LLAMA_TMPDIR="$(mktemp -d)"
+  trap 'rm -rf "$LLAMA_TMPDIR"' EXIT
 
-# Copy llama-cli and all companion .so/.dylib files (RUNPATH=$ORIGIN requires co-location)
-LLAMA_DIR="$(dirname "$LLAMA_BIN")"
-cp "$LLAMA_DIR"/llama-cli "$BIN_DIR/llama-cli"
-chmod +x "$BIN_DIR/llama-cli"
-find "$LLAMA_DIR" -name "*.so*" -o -name "*.dylib" | while read -r lib; do
-  cp "$lib" "$BIN_DIR/"
-done
-echo "  -> $BIN_DIR/llama-cli (+ shared libs)"
+  curl -fL --progress-bar "$LLAMA_URL" -o "$LLAMA_TMPDIR/llama.tar.gz"
+  mkdir -p "$LLAMA_TMPDIR/llama"
+  tar -xzf "$LLAMA_TMPDIR/llama.tar.gz" -C "$LLAMA_TMPDIR/llama" 2>/dev/null || true
 
-# --- Download model ---
-GGUF_COUNT="$(find "$MODELS_DIR" -name "*.gguf" 2>/dev/null | wc -l)"
-if [ "$GGUF_COUNT" -gt 0 ]; then
-  echo "Model already present in $MODELS_DIR, skipping."
-else
+  # Find llama-cli in extracted files
+  LLAMA_BIN="$(find "$LLAMA_TMPDIR/llama" -name "llama-cli" -type f | head -1)"
+  if [ -z "$LLAMA_BIN" ]; then
+    echo "Error: llama-cli not found in downloaded archive"
+    exit 1
+  fi
+
+  # Copy llama-cli and all companion .so/.dylib files (RUNPATH=$ORIGIN requires co-location)
+  LLAMA_DIR="$(dirname "$LLAMA_BIN")"
+  cp "$LLAMA_DIR"/llama-cli "$BIN_DIR/llama-cli"
+  chmod +x "$BIN_DIR/llama-cli"
+  find "$LLAMA_DIR" -name "*.so*" -o -name "*.dylib" | while read -r lib; do
+    cp "$lib" "$BIN_DIR/"
+  done
+  echo "  -> $BIN_DIR/llama-cli (+ shared libs)"
+}
+
+install_model() {
+  GGUF_COUNT="$(find "$MODELS_DIR" -name "*.gguf" 2>/dev/null | wc -l)"
+  if [ "$GGUF_COUNT" -gt 0 ]; then
+    echo "Model already present in $MODELS_DIR, skipping."
+    return 0
+  fi
+
   echo ""
   echo "Choose a model to download:"
   echo "  1) Tiny      - TinyLlama 1.1B Q4_K_M      (~670MB)  fastest, lowest RAM"
@@ -132,11 +174,7 @@ else
   echo ""
 
   if [ -z "${MODEL_CHOICE:-}" ]; then
-    if [ -t 0 ]; then
-      read -r -p "Enter choice [1-4] (default: 2): " MODEL_CHOICE
-    elif [ -e /dev/tty ]; then
-      read -r -p "Enter choice [1-4] (default: 2): " MODEL_CHOICE </dev/tty
-    fi
+    MODEL_CHOICE="$(ask 'Enter choice [1-4] (default: 2): ')"
   fi
 
   MODEL_CHOICE="${MODEL_CHOICE:-2}"
@@ -175,6 +213,27 @@ else
     curl -fL --progress-bar "$MODEL_URL" -o "$MODELS_DIR/$MODEL_FILE"
     echo "  -> $MODELS_DIR/$MODEL_FILE"
   fi
+}
+
+# configure_cloud hands off to `ai --setup`, which owns the provider list and
+# writes ~/.ai-sh/config.json.
+configure_cloud() {
+  echo ""
+  if [ -t 0 ]; then
+    "$BIN_DIR/ai" --setup
+  elif have_tty; then
+    "$BIN_DIR/ai" --setup </dev/tty
+  else
+    echo "No terminal available for cloud setup. Finish it later with:"
+    echo "  ai --setup"
+  fi
+}
+
+if [ "$BACKEND" = "cloud" ]; then
+  configure_cloud
+else
+  install_llama_cli
+  install_model
 fi
 
 # --- Add to PATH ---
@@ -224,3 +283,5 @@ echo ""
 echo "Usage:"
 echo "  ai install numpy"
 echo "  ai \"kill process on port 3000\""
+echo ""
+echo "Switch backends anytime with:  ai --setup"

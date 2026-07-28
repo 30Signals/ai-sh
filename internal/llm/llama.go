@@ -11,6 +11,30 @@ import (
 	"syscall"
 )
 
+// local runs inference through a llama.cpp binary on this machine.
+type local struct {
+	llamaPath string
+	modelPath string
+}
+
+func newLocal() (Provider, error) {
+	llamaPath, err := FindLlamaCLI()
+	if err != nil {
+		return nil, missingLocalRuntime("llama-cli not found in ~/.ai-sh/bin/.")
+	}
+
+	modelPath, err := FindModel()
+	if err != nil {
+		return nil, missingLocalRuntime("no .gguf model found in ~/.ai-sh/models/.")
+	}
+
+	return &local{llamaPath: llamaPath, modelPath: modelPath}, nil
+}
+
+func (l *local) Describe() string {
+	return "local: " + filepath.Base(l.modelPath)
+}
+
 // FindLlamaCLI searches for the llama-cli binary in known locations.
 func FindLlamaCLI() (string, error) {
 	home, err := os.UserHomeDir()
@@ -62,12 +86,12 @@ func FindModel() (string, error) {
 	return "", fmt.Errorf("no model found in ~/.ai-sh/models/")
 }
 
-// RunInference runs llama-cli with the given prompt and returns the generated command.
-func RunInference(llamaPath, modelPath, userPrompt string) (string, error) {
+// Generate runs llama-cli with the given prompt and returns the command.
+func (l *local) Generate(userPrompt string) (string, error) {
 	systemPrompt := buildSystemPrompt()
 
 	args := []string{
-		"-m", modelPath,
+		"-m", l.modelPath,
 		"-sys", systemPrompt,
 		"-p", userPrompt,
 		"-n", "100",
@@ -79,7 +103,7 @@ func RunInference(llamaPath, modelPath, userPrompt string) (string, error) {
 		"-st",
 	}
 
-	cmd := exec.Command(llamaPath, args...)
+	cmd := exec.Command(l.llamaPath, args...)
 	var stdout bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = io.Discard
@@ -96,18 +120,6 @@ func RunInference(llamaPath, modelPath, userPrompt string) (string, error) {
 	output = stripMarkdown(output)
 
 	return output, nil
-}
-
-// buildSystemPrompt constructs the system prompt with shell context.
-func buildSystemPrompt() string {
-	var sb strings.Builder
-	sb.WriteString("Convert the instruction to a single POSIX sh command. Output ONLY the command, no explanation, no markdown, no backticks.\n")
-
-	if cwd, err := os.Getwd(); err == nil {
-		sb.WriteString("Current directory: " + cwd + "\n")
-	}
-
-	return sb.String()
 }
 
 // cleanOutput extracts the model reply from llama-cli conversation output.
@@ -138,36 +150,4 @@ func stripBackspaces(s string) string {
 		}
 	}
 	return string(out)
-}
-
-// stripMarkdown extracts a bare command from the output.
-// If a fenced code block exists anywhere, returns its first line.
-// Falls back to the first non-empty line.
-func stripMarkdown(s string) string {
-	if idx := strings.Index(s, "```"); idx != -1 {
-		rest := s[idx+3:]
-		if nl := strings.Index(rest, "\n"); nl != -1 {
-			rest = rest[nl+1:]
-		}
-		if end := strings.Index(rest, "```"); end != -1 {
-			rest = rest[:end]
-		}
-		for _, line := range strings.Split(rest, "\n") {
-			line = strings.TrimSpace(line)
-			if line != "" {
-				return line
-			}
-		}
-	}
-
-	s = strings.Trim(s, "`")
-	for _, line := range strings.Split(s, "\n") {
-		line = strings.TrimSpace(line)
-		line = strings.TrimPrefix(line, "$ ")
-		if line != "" {
-			return line
-		}
-	}
-
-	return strings.TrimSpace(s)
 }
