@@ -17,6 +17,9 @@ func TestRedact(t *testing.T) {
 		{"MY_API_KEY=zzz make deploy", "MY_API_KEY=<redacted> make deploy"},
 		{`curl -H "Authorization: Bearer sk-live-9" https://x`, `curl -H "Authorization: Bearer <redacted>" https://x`},
 		{"mysql --password=hunter2 -u root", "mysql --password=<redacted> -u root"},
+		{`mysql --password "hunter2" -u root`, `mysql --password <redacted> -u root`},
+		{`export MY_TOKEN="abc123 def"`, `export MY_TOKEN=<redacted>`},
+		{`app --api-key='sekrit value'`, `app --api-key=<redacted>`},
 		{"ls -la /tmp", "ls -la /tmp"},
 	}
 

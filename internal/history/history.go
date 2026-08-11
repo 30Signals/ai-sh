@@ -50,16 +50,20 @@ type Record struct {
 	Exit    int       `json:"exit,omitempty"`
 }
 
+// secretValue matches a secret's value whether it is bare or wrapped in
+// quotes, so `--password "hunter2"` redacts as thoroughly as `--password=hunter2`.
+const secretValue = `"[^"]*"|'[^']*'|[^\s"']+`
+
 // redactors blank out secrets before they are written. Redaction happens on
 // write, never on read: a value that never lands in the file cannot be leaked
 // later by a change to how the file is consumed.
 var redactors = []*regexp.Regexp{
 	// FOO_TOKEN=..., AWS_SECRET_ACCESS_KEY=..., password=...
-	regexp.MustCompile(`(?i)([A-Z0-9_]*(?:SECRET|TOKEN|PASSWORD|PASSWD|API_?KEY|CREDENTIALS?|PRIVATE_KEY)[A-Z0-9_]*\s*=\s*)([^\s"']+)`),
+	regexp.MustCompile(`(?i)([A-Z0-9_]*(?:SECRET|TOKEN|PASSWORD|PASSWD|API_?KEY|CREDENTIALS?|PRIVATE_KEY)[A-Z0-9_]*\s*=\s*)(` + secretValue + `)`),
 	// Authorization: Bearer ...
-	regexp.MustCompile(`(?i)(authorization:\s*(?:bearer\s+|basic\s+)?)([^\s"']+)`),
+	regexp.MustCompile(`(?i)(authorization:\s*(?:bearer\s+|basic\s+)?)(` + secretValue + `)`),
 	// --password x, --token=x
-	regexp.MustCompile(`(?i)(--(?:password|token|api-?key|secret)(?:=|\s+))([^\s"']+)`),
+	regexp.MustCompile(`(?i)(--(?:password|token|api-?key|secret)(?:=|\s+))(` + secretValue + `)`),
 }
 
 // Redact replaces secret-shaped values with a placeholder.
