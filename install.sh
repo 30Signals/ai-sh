@@ -9,7 +9,7 @@ REPO="30Signals/ai-sh"
 # with an older published binary that lacks a feature it depends on. Bump it in
 # the same commit that makes install.sh require a newer binary feature.
 # Override with AI_VERSION=latest (or any tag) to install something else.
-KNOWN_GOOD_VERSION="v0.4.0"
+KNOWN_GOOD_VERSION="v0.5.0"
 
 INSTALL_DIR="$HOME/.ai-sh"
 BIN_DIR="$INSTALL_DIR/bin"
