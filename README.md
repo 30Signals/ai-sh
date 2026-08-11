@@ -1,12 +1,42 @@
+<div align="center">
+
 # ai-sh
 
-> **v0.3.0** — Convert natural language to POSIX shell commands. Run a small model locally with no API keys, or point it at a cloud provider's free tier.
+**Turn plain English into a POSIX shell command — locally, with no API keys, or via any OpenAI-compatible cloud provider's free tier.**
+
+[![Release](https://img.shields.io/github/v/release/30Signals/ai-sh?label=release&color=blue)](https://github.com/30Signals/ai-sh/releases)
+[![License: MIT](https://img.shields.io/badge/license-MIT-lightgrey)](LICENSE)
+[![Platforms](https://img.shields.io/badge/platform-linux%20%7C%20macos-informational)](#requirements)
+
+</div>
 
 ```
-ai show disk usage
-ai find large log files
-ai kill process on port 3000
+$ ai show disk usage
+$ ai find large log files
+$ ai kill process on port 3000
 ```
+
+Every generated command is shown for confirmation before it runs — never executed blind.
+
+## Quick install
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/30Signals/ai-sh/main/install.sh | bash
+```
+
+That's it — the installer asks whether to run fully offline (local model) or against a cloud provider, downloads what it needs into `~/.ai-sh/`, and gets out of the way. Details below.
+
+## Contents
+
+- [Install](#install)
+- [Local models](#local-models)
+- [Cloud models](#cloud-models)
+- [Usage](#usage)
+- [Session history](#session-history)
+- [Memory](#memory)
+- [Requirements](#requirements)
+- [Build from source](#build-from-source)
+- [License](#license)
 
 ## Install
 
@@ -177,3 +207,7 @@ make build    # compile to dist/ai
 make install  # build and install to ~/.ai-sh/bin/ai
 make release  # cross-compile for linux/darwin × amd64/arm64
 ```
+
+## License
+
+[MIT](LICENSE)
