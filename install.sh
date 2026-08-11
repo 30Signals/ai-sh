@@ -2,6 +2,15 @@
 set -euo pipefail
 
 REPO="30Signals/ai-sh"
+
+# The oldest release that satisfies everything this script asks the binary to
+# do — currently `ai --setup`, which the cloud path shells out to. We install
+# this by default instead of "latest" so a script on main can never pair itself
+# with an older published binary that lacks a feature it depends on. Bump it in
+# the same commit that makes install.sh require a newer binary feature.
+# Override with AI_VERSION=latest (or any tag) to install something else.
+KNOWN_GOOD_VERSION="v0.4.0"
+
 INSTALL_DIR="$HOME/.ai-sh"
 BIN_DIR="$INSTALL_DIR/bin"
 MODELS_DIR="$INSTALL_DIR/models"
@@ -58,18 +67,20 @@ if [ -n "${LOCAL_BINARY:-}" ]; then
   cp "$LOCAL_BINARY" "$BIN_DIR/ai"
   chmod +x "$BIN_DIR/ai"
   echo "  -> $BIN_DIR/ai"
+  AI_SOURCE="local build from $LOCAL_BINARY"
 else
-  AI_VERSION="${AI_VERSION:-latest}"
+  AI_VERSION="${AI_VERSION:-$KNOWN_GOOD_VERSION}"
   if [ "$AI_VERSION" = "latest" ]; then
     AI_URL="https://github.com/$REPO/releases/latest/download/ai-${OS_NAME}-${ARCH_NAME}"
   else
     AI_URL="https://github.com/$REPO/releases/download/${AI_VERSION}/ai-${OS_NAME}-${ARCH_NAME}"
   fi
 
-  echo "Downloading ai binary..."
+  echo "Downloading ai binary ($AI_VERSION)..."
   if curl -fsSL "$AI_URL" -o "$BIN_DIR/ai" 2>/dev/null; then
     chmod +x "$BIN_DIR/ai"
     echo "  -> $BIN_DIR/ai"
+    AI_SOURCE="release $AI_VERSION"
   else
     echo "No release found — building from source..."
     if ! command -v go &>/dev/null; then
@@ -84,6 +95,7 @@ else
     chmod +x "$BIN_DIR/ai"
     cd -
     echo "  -> $BIN_DIR/ai (built from source)"
+    AI_SOURCE="source build of $REPO@main"
   fi
 fi
 
@@ -223,6 +235,26 @@ install_model() {
 # history question. Nothing about this call depends on a new binary feature, so
 # an older published `ai` degrades to simply not asking.
 configure_cloud() {
+  # The cloud path is only reachable on binaries that know about --setup. If a
+  # pinned-down AI_VERSION or a stale build predates it, say so plainly rather
+  # than letting `ai --setup` fail with an unknown-flag error.
+  # Captured rather than piped into grep: under `set -o pipefail`, grep -q
+  # closing the pipe early would surface as a failed pipeline.
+  local help_text=""
+  help_text="$("$BIN_DIR/ai" --help 2>&1 || true)"
+  if ! printf '%s' "$help_text" | grep -q -- "--setup"; then
+    echo ""
+    echo "Error: the installed ai binary does not support '--setup', which the"
+    echo "cloud backend needs to save a provider and API key."
+    echo ""
+    echo "  installed: $BIN_DIR/ai ($AI_SOURCE)"
+    echo "  required:  $KNOWN_GOOD_VERSION or newer"
+    echo ""
+    echo "Re-run without pinning an older version, or use the local backend:"
+    echo "  AI_SH_BACKEND=local"
+    exit 1
+  fi
+
   echo ""
   if [ -t 0 ]; then
     "$BIN_DIR/ai" --setup

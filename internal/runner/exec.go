@@ -26,6 +26,24 @@ type Outcome struct {
 	ExitCode int
 }
 
+// Handle dispatches a model reply: prose answers are printed, commands go
+// through the confirm loop.
+//
+// messages is the conversation that produced reply, ending with the user's
+// instruction; it is threaded through to ConfirmAndRun for refinement.
+func Handle(reply string, messages []llm.Message, infer InferFunc) (Outcome, error) {
+	if text, ok := llm.SplitAnswer(reply); ok {
+		printAnswer(text)
+		return Outcome{}, nil
+	}
+	return ConfirmAndRun(reply, messages, infer)
+}
+
+// printAnswer shows a prose reply, which is never offered for execution.
+func printAnswer(text string) {
+	fmt.Printf("\nai:\n%s\n", text)
+}
+
 // ConfirmAndRun shows the command, lets the user run, refine, or cancel.
 //
 // messages is the conversation that produced command, ending with the user's
@@ -74,6 +92,11 @@ func ConfirmAndRun(command string, messages []llm.Message, infer InferFunc) (Out
 				// anchored to an empty answer.
 				convo = convo[:len(convo)-2]
 				continue
+			}
+			// The refinement may have turned the request into a question.
+			if text, ok := llm.SplitAnswer(refined); ok {
+				printAnswer(text)
+				return Outcome{}, nil
 			}
 			command = refined
 

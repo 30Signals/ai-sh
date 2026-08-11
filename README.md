@@ -138,6 +138,32 @@ Details worth knowing:
   writing, but treat the directory as sensitive regardless. Prompts also get
   larger, so cloud calls cost a little more.
 
+## Memory
+
+Notes you want on every prompt — preferred tools, machine quirks, house style —
+live in `~/.ai-sh/memory.md`, next to the config file, and are sent with every
+inference:
+
+```bash
+ai --remember "prefer rg over grep"
+ai --remember "this box uses doas, not sudo"
+ai --memory              # list notes with their numbers
+ai --forget 2            # drop one
+ai --forget all          # drop them all
+```
+
+The file is plain markdown, so editing it by hand works just as well:
+
+```markdown
+# ai-sh memory
+- prefer rg over grep
+- this box uses doas, not sudo
+```
+
+One note per line, `#` lines ignored, bullets optional. Nothing is ever written
+implicitly — ai-sh only stores what you tell it to. Up to 50 notes of 200
+characters each, keeping the prompt small enough for the local models.
+
 ## Requirements
 
 - Linux or macOS (amd64 or arm64)

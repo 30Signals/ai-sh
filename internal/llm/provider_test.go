@@ -62,25 +62,48 @@ func TestBuildSystemPromptFlattensMultilineTurns(t *testing.T) {
 	}
 }
 
-func TestStripMarkdown(t *testing.T) {
-	cases := []struct {
-		name string
-		in   string
-		want string
+func TestFormatReply(t *testing.T) {
+	tests := []struct {
+		name    string
+		raw     string
+		want    string
+		isProse bool
 	}{
-		{"bare", "ls -la", "ls -la"},
-		{"fenced", "```sh\nls -la\n```", "ls -la"},
-		{"fenced with prose", "Here you go:\n```\nls -la\n```\nEnjoy", "ls -la"},
-		{"backticked", "`ls -la`", "ls -la"},
-		{"prompt prefix", "$ ls -la", "ls -la"},
-		{"first line wins", "ls -la\nrm -rf /", "ls -la"},
+		{"bare command", "ls -la", "ls -la", false},
+		{"fenced command", "```sh\nls -la\n```", "ls -la", false},
+		{"fenced with prose", "Here you go:\n```\nls -la\n```\nEnjoy", "ls -la", false},
+		{"backticked", "`ls -la`", "ls -la", false},
+		{"prompt sign stripped", "$ ls -la", "ls -la", false},
+		{"first line wins", "ls -la\nrm -rf /", "ls -la", false},
+		{"answer", "ANSWER: chmod 755 sets rwxr-xr-x.", "chmod 755 sets rwxr-xr-x.", true},
+		{"answer lowercase", "answer: hello there.", "hello there.", true},
+		{"answer after preamble", "Sure!\nANSWER: it lists files.", "it lists files.", true},
+		{"answer wrapped in markdown", "**ANSWER:** it lists files.", "it lists files.", true},
+		{"answer over two lines", "ANSWER: it lists files\nin the directory.", "it lists files in the directory.", true},
 	}
 
-	for _, tc := range cases {
+	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := stripMarkdown(tc.in); got != tc.want {
-				t.Errorf("stripMarkdown(%q) = %q, want %q", tc.in, got, tc.want)
+			reply := formatReply(tc.raw)
+			text, ok := SplitAnswer(reply)
+			if ok != tc.isProse {
+				t.Fatalf("SplitAnswer prose = %v, want %v (reply %q)", ok, tc.isProse, reply)
+			}
+			got := reply
+			if ok {
+				got = text
+			}
+			if got != tc.want {
+				t.Errorf("got %q, want %q", got, tc.want)
 			}
 		})
+	}
+}
+
+// A command that merely mentions the word answer must not be treated as prose.
+func TestFormatReplyCommandMentioningAnswer(t *testing.T) {
+	reply := formatReply("grep -rn 'answer:' .")
+	if _, ok := SplitAnswer(reply); ok {
+		t.Errorf("command was misread as prose: %q", reply)
 	}
 }

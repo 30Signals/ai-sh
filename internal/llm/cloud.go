@@ -56,7 +56,7 @@ type chatResponse struct {
 }
 
 // Generate posts the conversation to the configured endpoint. Sampling matches
-// the local provider: temperature 0.1, 100 token ceiling. Prior turns travel
+// the local provider: temperature 0.1, 220 token ceiling. Prior turns travel
 // as real chat messages, so buildSystemPrompt gets nothing to fold in.
 func (c *cloud) Generate(messages []Message) (string, error) {
 	if _, _, err := currentInstruction(messages); err != nil {
@@ -73,7 +73,7 @@ func (c *cloud) Generate(messages []Message) (string, error) {
 		Model:       c.cfg.Model,
 		Messages:    chat,
 		Temperature: 0.1,
-		MaxTokens:   100,
+		MaxTokens:   220,
 	})
 	if err != nil {
 		return "", err
@@ -114,7 +114,7 @@ func (c *cloud) Generate(messages []Message) (string, error) {
 		return "", fmt.Errorf("%s returned no choices", c.cfg.Provider)
 	}
 
-	return stripMarkdown(strings.TrimSpace(parsed.Choices[0].Message.Content)), nil
+	return formatReply(parsed.Choices[0].Message.Content), nil
 }
 
 func truncate(s string, n int) string {
