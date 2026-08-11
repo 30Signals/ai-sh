@@ -55,15 +55,23 @@ type chatResponse struct {
 	} `json:"error"`
 }
 
-// Generate posts the instruction to the configured endpoint. Sampling matches
-// the local provider: temperature 0.1, 220 token ceiling.
-func (c *cloud) Generate(userPrompt string) (string, error) {
+// Generate posts the conversation to the configured endpoint. Sampling matches
+// the local provider: temperature 0.1, 220 token ceiling. Prior turns travel
+// as real chat messages, so buildSystemPrompt gets nothing to fold in.
+func (c *cloud) Generate(messages []Message) (string, error) {
+	if _, _, err := currentInstruction(messages); err != nil {
+		return "", err
+	}
+
+	chat := make([]chatMessage, 0, len(messages)+1)
+	chat = append(chat, chatMessage{Role: "system", Content: buildSystemPrompt(nil)})
+	for _, msg := range messages {
+		chat = append(chat, chatMessage{Role: msg.Role, Content: msg.Content})
+	}
+
 	body, err := json.Marshal(chatRequest{
-		Model: c.cfg.Model,
-		Messages: []chatMessage{
-			{Role: "system", Content: buildSystemPrompt()},
-			{Role: "user", Content: userPrompt},
-		},
+		Model:       c.cfg.Model,
+		Messages:    chat,
 		Temperature: 0.1,
 		MaxTokens:   220,
 	})

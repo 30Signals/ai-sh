@@ -2,6 +2,7 @@ package runner
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -12,17 +13,30 @@ import (
 	"github.com/user/ai-sh/internal/llm"
 )
 
-// InferFunc re-runs inference with a new prompt and returns the command.
-type InferFunc func(prompt string) (string, error)
+// InferFunc re-runs inference over a conversation and returns the command.
+type InferFunc func(messages []llm.Message) (string, error)
+
+// Outcome reports what the user settled on, so the caller can record it.
+type Outcome struct {
+	// Command is the last command shown, after any refinement.
+	Command string
+	// Ran is false when the user cancelled.
+	Ran bool
+	// ExitCode is meaningful only when Ran.
+	ExitCode int
+}
 
 // Handle dispatches a model reply: prose answers are printed, commands go
 // through the confirm loop.
-func Handle(reply, originalPrompt string, infer InferFunc) error {
+//
+// messages is the conversation that produced reply, ending with the user's
+// instruction; it is threaded through to ConfirmAndRun for refinement.
+func Handle(reply string, messages []llm.Message, infer InferFunc) (Outcome, error) {
 	if text, ok := llm.SplitAnswer(reply); ok {
 		printAnswer(text)
-		return nil
+		return Outcome{}, nil
 	}
-	return ConfirmAndRun(reply, originalPrompt, infer)
+	return ConfirmAndRun(reply, messages, infer)
 }
 
 // printAnswer shows a prose reply, which is never offered for execution.
@@ -31,7 +45,15 @@ func printAnswer(text string) {
 }
 
 // ConfirmAndRun shows the command, lets the user run, refine, or cancel.
-func ConfirmAndRun(command, originalPrompt string, infer InferFunc) error {
+//
+// messages is the conversation that produced command, ending with the user's
+// instruction. Refining appends the command as an assistant turn and the
+// feedback as a user turn, so the model corrects its own output instead of
+// re-answering a concatenated prompt.
+func ConfirmAndRun(command string, messages []llm.Message, infer InferFunc) (Outcome, error) {
+	// Copy: appending on refine must not write into the caller's array.
+	convo := append([]llm.Message(nil), messages...)
+
 	for {
 		fmt.Printf("\nai:\n\033[1m%s\033[0m\n\n", command)
 		fmt.Print("\033[1m↵\033[0m run   \033[1me\033[0m refine   \033[1mn\033[0m cancel  ")
@@ -39,44 +61,62 @@ func ConfirmAndRun(command, originalPrompt string, infer InferFunc) error {
 		key, err := readKey()
 		fmt.Println()
 		if err != nil {
-			return err
+			return Outcome{Command: command}, err
 		}
 
 		switch key {
 		case '\r', '\n':
-			return runCommand(command)
+			runErr := runCommand(command)
+			return Outcome{Command: command, Ran: true, ExitCode: exitCode(runErr)}, runErr
 
 		case 'e', 'E':
 			fmt.Print("Refine: ")
 			line, err := bufio.NewReader(os.Stdin).ReadString('\n')
 			if err != nil {
-				return err
+				return Outcome{Command: command}, err
 			}
 			feedback := strings.TrimSpace(line)
 			if feedback == "" {
 				continue
 			}
-			refined := originalPrompt + " — " + feedback
+
+			convo = append(convo, llm.Assistant(command), llm.User(feedback))
 			fmt.Println("Thinking...")
-			command, err = infer(refined)
+			refined, err := infer(convo)
 			if err != nil {
-				return err
+				return Outcome{Command: command}, err
 			}
-			if command == "" {
+			if refined == "" {
 				fmt.Println("Model returned nothing, try again.")
+				// Drop the dead exchange so the next refinement is not
+				// anchored to an empty answer.
+				convo = convo[:len(convo)-2]
 				continue
 			}
 			// The refinement may have turned the request into a question.
-			if text, ok := llm.SplitAnswer(command); ok {
+			if text, ok := llm.SplitAnswer(refined); ok {
 				printAnswer(text)
-				return nil
+				return Outcome{}, nil
 			}
+			command = refined
 
 		default:
 			fmt.Println("Cancelled.")
-			return nil
+			return Outcome{Command: command}, nil
 		}
 	}
+}
+
+// exitCode maps a command's error to a shell-style status.
+func exitCode(err error) int {
+	if err == nil {
+		return 0
+	}
+	var exitErr *exec.ExitError
+	if errors.As(err, &exitErr) {
+		return exitErr.ExitCode()
+	}
+	return 1
 }
 
 // readKey reads a single keypress without requiring Enter.

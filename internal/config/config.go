@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
+	"strings"
 )
 
 // Config is persisted as ~/.ai-sh/config.json.
@@ -20,6 +22,25 @@ type Config struct {
 	APIKey string `json:"api_key,omitempty"`
 	// BaseURL overrides the preset endpoint. Required for provider "custom".
 	BaseURL string `json:"base_url,omitempty"`
+	// History opts into carrying recent turns from the same terminal into the
+	// next prompt. Off by default, and set once (here or via 'ai --setup')
+	// rather than per call, which is what keeps a follow-up invocation bare.
+	History bool `json:"history,omitempty"`
+	// HistoryTurns overrides how many past turns are carried. Zero means the
+	// package default.
+	HistoryTurns int `json:"history_turns,omitempty"`
+}
+
+// HistoryEnabled reports whether to carry past turns for this backend.
+//
+// The local backend is excluded even when History is set, for two reasons: a
+// 1-3B model at temperature 0.1 tends to answer worse with several turns of
+// chatter ahead of the instruction, and every call spawns a fresh llama-cli, so
+// history would mean re-prefilling the whole transcript on CPU each time. This
+// is a clamp rather than a validation error on purpose -- switching to the local
+// backend must not turn a saved config into a startup failure.
+func (c Config) HistoryEnabled() bool {
+	return c.History && c.Provider != "local"
 }
 
 // Preset describes a cloud endpoint that speaks the OpenAI chat-completions
@@ -126,8 +147,29 @@ func Load() (Config, error) {
 	if v := os.Getenv("AI_SH_API_KEY"); v != "" {
 		cfg.APIKey = v
 	}
+	if v := os.Getenv("AI_SH_HISTORY"); v != "" {
+		if on, ok := parseBool(v); ok {
+			cfg.History = on
+		}
+	}
+	if v := os.Getenv("AI_SH_HISTORY_TURNS"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n >= 0 {
+			cfg.HistoryTurns = n
+		}
+	}
 
 	return cfg, nil
+}
+
+// parseBool accepts the spellings people actually type in a shell.
+func parseBool(v string) (bool, bool) {
+	switch strings.ToLower(strings.TrimSpace(v)) {
+	case "1", "true", "yes", "on":
+		return true, true
+	case "0", "false", "no", "off":
+		return false, true
+	}
+	return false, false
 }
 
 // Save writes the config file with owner-only permissions, since it may hold

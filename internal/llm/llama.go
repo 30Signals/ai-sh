@@ -86,10 +86,20 @@ func FindModel() (string, error) {
 	return "", fmt.Errorf("no model found in ~/.ai-sh/models/")
 }
 
-// Generate runs llama-cli with the given prompt and returns the reply: a bare
-// command, or prose carrying AnswerPrefix when the request was not a shell task.
-func (l *local) Generate(userPrompt string) (string, error) {
-	systemPrompt := buildSystemPrompt()
+// Generate runs llama-cli with the given conversation and returns the reply: a
+// bare command, or prose carrying AnswerPrefix when the request was not a
+// shell task.
+//
+// Prior turns are folded into the system prompt rather than replayed as
+// conversation turns: cleanOutput locates the reply by the "> <instruction>"
+// echo, so the current instruction has to remain the only thing passed to -p.
+func (l *local) Generate(messages []Message) (string, error) {
+	instruction, prior, err := currentInstruction(messages)
+	if err != nil {
+		return "", err
+	}
+	userPrompt := instruction.Content
+	systemPrompt := buildSystemPrompt(prior)
 
 	args := []string{
 		"-m", l.modelPath,

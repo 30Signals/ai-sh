@@ -84,6 +84,18 @@ func runSetup() error {
 			return err
 		}
 		cfg.APIKey = key
+
+		// Only offered on the cloud path: the local backend clamps history off,
+		// so asking here would save a setting that visibly does nothing.
+		fmt.Println("\nSession history lets a follow-up refer back to earlier turns in the")
+		fmt.Println("same terminal (\"now only the pdfs\"). Prompts get larger, and past")
+		fmt.Println("instructions and commands are stored under ~/.ai-sh/sessions/.")
+		enableHistory, err := confirm(in, "Enable session history?", current.History)
+		if err != nil {
+			return err
+		}
+		cfg.History = enableHistory
+		cfg.HistoryTurns = current.HistoryTurns
 	}
 
 	if err := cfg.Save(); err != nil {
@@ -125,6 +137,29 @@ func providerForChoice(choice string) (string, bool) {
 		}
 	}
 	return "", false
+}
+
+// confirm asks a yes/no question, returning def when the input is empty.
+func confirm(in *bufio.Reader, label string, def bool) (bool, error) {
+	choices := "y/N"
+	if def {
+		choices = "Y/n"
+	}
+	fmt.Printf("%s [%s]: ", label, choices)
+
+	line, err := in.ReadString('\n')
+	if err != nil && line == "" {
+		return def, err
+	}
+
+	switch strings.ToLower(strings.TrimSpace(line)) {
+	case "y", "yes":
+		return true, nil
+	case "n", "no":
+		return false, nil
+	default:
+		return def, nil
+	}
 }
 
 // prompt reads one line, returning def when the input is empty.

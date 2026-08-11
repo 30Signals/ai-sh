@@ -229,6 +229,11 @@ install_model() {
 
 # configure_cloud hands off to `ai --setup`, which owns the provider list and
 # writes ~/.ai-sh/config.json.
+#
+# AI_SH_HISTORY is inherited rather than passed as a flag: `ai` reads it as a
+# config default, so setting it here just preselects the answer to the session
+# history question. Nothing about this call depends on a new binary feature, so
+# an older published `ai` degrades to simply not asking.
 configure_cloud() {
   # The cloud path is only reachable on binaries that know about --setup. If a
   # pinned-down AI_VERSION or a stale build predates it, say so plainly rather

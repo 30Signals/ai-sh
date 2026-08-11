@@ -2,11 +2,13 @@ package cmd
 
 import (
 	"fmt"
+	"os"
 	"strconv"
 	"strings"
 
 	"github.com/spf13/cobra"
 	"github.com/user/ai-sh/internal/config"
+	"github.com/user/ai-sh/internal/history"
 	"github.com/user/ai-sh/internal/llm"
 	"github.com/user/ai-sh/internal/memory"
 	"github.com/user/ai-sh/internal/runner"
@@ -15,6 +17,7 @@ import (
 var (
 	setupFlag    bool
 	statusFlag   bool
+	newFlag      bool
 	providerFlag string
 	modelFlag    string
 	rememberFlag string
@@ -68,6 +71,16 @@ var rootCmd = &cobra.Command{
 			return runStatus(cfg)
 		}
 
+		if newFlag {
+			if err := history.Clear(); err != nil {
+				return err
+			}
+			if len(args) == 0 {
+				fmt.Println("Session history cleared.")
+				return nil
+			}
+		}
+
 		if len(args) == 0 {
 			return cmd.Help()
 		}
@@ -78,7 +91,15 @@ var rootCmd = &cobra.Command{
 			return err
 		}
 
-		reply, err := provider.Generate(prompt)
+		useHistory := cfg.HistoryEnabled()
+		messages, past := buildMessages(prompt, useHistory, cfg.HistoryTurns)
+
+		if past > 0 {
+			// History is implicit, so say when it is in play and how to escape.
+			fmt.Fprintf(os.Stderr, "\033[2m↳ %s from this terminal (ai --new to reset)\033[0m\n", pluralTurns(past))
+		}
+
+		reply, err := provider.Generate(messages)
 		if err != nil {
 			return err
 		}
@@ -86,13 +107,64 @@ var rootCmd = &cobra.Command{
 			return fmt.Errorf("model returned empty output. Try rephrasing")
 		}
 
-		return runner.Handle(reply, prompt, provider.Generate)
+		outcome, runErr := runner.Handle(reply, messages, provider.Generate)
+		if useHistory {
+			record(prompt, outcome)
+		}
+		return runErr
 	},
+}
+
+// buildMessages assembles the conversation, returning it with the number of
+// past turns folded in.
+//
+// Past commands become assistant turns verbatim, with no note of their exit
+// status: keeping assistant content to a bare command is what stops the model
+// learning to emit prose or comments. The exit code is still recorded, for the
+// failure-explanation work that will need it.
+func buildMessages(prompt string, useHistory bool, turns int) ([]llm.Message, int) {
+	var past []history.Record
+	if useHistory {
+		past = history.Load(turns)
+	}
+
+	messages := make([]llm.Message, 0, len(past)*2+1)
+	for _, rec := range past {
+		messages = append(messages, llm.User(rec.Prompt), llm.Assistant(rec.Command))
+	}
+	return append(messages, llm.User(prompt)), len(past)
+}
+
+// record appends the turn, ignoring failures: a transcript that cannot be
+// written is not worth interrupting the user over.
+func record(prompt string, outcome runner.Outcome) {
+	if outcome.Command == "" {
+		return
+	}
+	cwd, err := os.Getwd()
+	if err != nil {
+		return
+	}
+	_ = history.Append(history.Record{
+		Cwd:     cwd,
+		Prompt:  prompt,
+		Command: outcome.Command,
+		Ran:     outcome.Ran,
+		Exit:    outcome.ExitCode,
+	})
+}
+
+func pluralTurns(n int) string {
+	if n == 1 {
+		return "1 earlier turn"
+	}
+	return fmt.Sprintf("%d earlier turns", n)
 }
 
 func init() {
 	rootCmd.Flags().BoolVar(&setupFlag, "setup", false, "choose a local or cloud model and save it to ~/.ai-sh/config.json")
 	rootCmd.Flags().BoolVar(&statusFlag, "status", false, "show which backend is configured")
+	rootCmd.Flags().BoolVar(&newFlag, "new", false, "forget this terminal's session history before running")
 	rootCmd.Flags().StringVar(&providerFlag, "provider", "", "backend for this call: local, "+config.KnownCloudProviders())
 	rootCmd.Flags().StringVar(&modelFlag, "model", "", "cloud model id for this call")
 	rootCmd.Flags().StringVar(&rememberFlag, "remember", "", "store a note sent with every prompt (e.g. \"prefer rg over grep\")")
@@ -167,6 +239,7 @@ func runStatus(cfg config.Config) error {
 		return err
 	}
 	fmt.Printf("config:   %s\n", path)
+	fmt.Printf("history:  %s\n", historyStatus(cfg))
 
 	if memPath, err := memory.Path(); err == nil {
 		notes, _ := memory.Load()
@@ -180,6 +253,19 @@ func runStatus(cfg config.Config) error {
 	}
 	fmt.Printf("provider: %s\n", provider.Describe())
 	return nil
+}
+
+// historyStatus explains the effective setting, including the case where it is
+// switched on in the config but clamped off by the backend.
+func historyStatus(cfg config.Config) string {
+	switch {
+	case cfg.HistoryEnabled():
+		return fmt.Sprintf("on (%s in this terminal)", pluralTurns(len(history.Load(cfg.HistoryTurns))))
+	case cfg.History:
+		return "off (not supported by the local backend)"
+	default:
+		return "off"
+	}
 }
 
 func Execute() error {

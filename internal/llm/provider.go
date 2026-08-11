@@ -10,10 +10,32 @@ import (
 	"github.com/user/ai-sh/internal/memory"
 )
 
+// Roles for Message. Only these two appear: the system prompt is the
+// provider's business, since each backend passes it differently.
+const (
+	RoleUser      = "user"
+	RoleAssistant = "assistant"
+)
+
+// Message is one turn of the exchange. Assistant turns hold a bare command.
+type Message struct {
+	Role    string
+	Content string
+}
+
+// User builds a user turn.
+func User(content string) Message { return Message{Role: RoleUser, Content: content} }
+
+// Assistant builds an assistant turn.
+func Assistant(content string) Message { return Message{Role: RoleAssistant, Content: content} }
+
 // Provider turns a natural language instruction into a shell command.
 type Provider interface {
-	// Generate returns a single command for the given instruction.
-	Generate(prompt string) (string, error)
+	// Generate returns a single command for the conversation, whose last
+	// message must be the user's current instruction. Earlier messages are
+	// context: prior instructions, the commands they produced, and any
+	// refinements.
+	Generate(messages []Message) (string, error)
 	// Describe names the backend for error messages and status output.
 	Describe() string
 }
@@ -29,6 +51,18 @@ func New(cfg config.Config) (Provider, error) {
 		return newLocal()
 	}
 	return newCloud(resolved)
+}
+
+// currentInstruction splits the trailing user turn from its context.
+func currentInstruction(messages []Message) (Message, []Message, error) {
+	if len(messages) == 0 {
+		return Message{}, nil, fmt.Errorf("no instruction to send")
+	}
+	last := messages[len(messages)-1]
+	if last.Role != RoleUser {
+		return Message{}, nil, fmt.Errorf("last message must be a user instruction, got %q", last.Role)
+	}
+	return last, messages[:len(messages)-1], nil
 }
 
 // AnswerPrefix marks a reply that is prose rather than a command. The system
@@ -47,12 +81,14 @@ func SplitAnswer(reply string) (string, bool) {
 }
 
 // buildSystemPrompt constructs the system prompt: command generation rules
-// first, then the prose escape hatch, then this machine's context and the
-// user's remembered notes. Small local models follow it better with the
-// examples at the end, closest to the reply. Memory is read fresh on every
-// call, so an edit to the file takes effect on the next inference, including a
-// refinement.
-func buildSystemPrompt() string {
+// first, then the prose escape hatch, then this machine's context, prior
+// turns from this session, and the user's remembered notes. Small local
+// models follow it better with the examples at the end, closest to the reply.
+// Prior turns are folded in as text for backends that cannot carry real
+// roles; pass nil when the backend sends them as messages instead. Memory is
+// read fresh on every call, so an edit to the file takes effect on the next
+// inference, including a refinement.
+func buildSystemPrompt(prior []Message) string {
 	var sb strings.Builder
 
 	sb.WriteString(`You are a command-line assistant. The user types a request in a terminal and you reply with one line, nothing else.
@@ -80,6 +116,18 @@ If the request is NOT a shell task - a factual question, "what does this flag do
 		sb.WriteString("- Login shell: " + shell + " (commands run under /bin/sh)\n")
 	}
 
+	if len(prior) > 0 {
+		sb.WriteString("\nEarlier in this session, oldest first. The instruction may refer back to it or correct it:\n")
+		for _, msg := range prior {
+			switch msg.Role {
+			case RoleUser:
+				sb.WriteString("instruction: " + oneLine(msg.Content) + "\n")
+			case RoleAssistant:
+				sb.WriteString("command: " + oneLine(msg.Content) + "\n")
+			}
+		}
+	}
+
 	// After the machine context and before the examples: the notes are context,
 	// and the examples have to stay closest to the reply.
 	if notes := memory.Prompt(); notes != "" {
@@ -96,6 +144,13 @@ what does chmod 755 mean -> ` + AnswerPrefix + ` It makes a file readable and ex
 `)
 
 	return sb.String()
+}
+
+// oneLine keeps folded-in context from breaking the line-per-turn layout.
+func oneLine(s string) string {
+	s = strings.ReplaceAll(s, "\r", " ")
+	s = strings.ReplaceAll(s, "\n", " ")
+	return strings.TrimSpace(s)
 }
 
 // osName reports a human label for the host OS.
