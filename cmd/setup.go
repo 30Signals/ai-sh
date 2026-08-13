@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"syscall"
+	"unsafe"
 
 	"github.com/user/ai-sh/internal/config"
 	"github.com/user/ai-sh/internal/llm"
@@ -79,7 +81,7 @@ func runSetup() error {
 		if preset.EnvKey != "" {
 			keyPrompt = fmt.Sprintf("API key (blank to read %s from the environment)", preset.EnvKey)
 		}
-		key, err := prompt(in, keyPrompt, "")
+		key, err := readSecret(in, keyPrompt)
 		if err != nil {
 			return err
 		}
@@ -160,6 +162,40 @@ func confirm(in *bufio.Reader, label string, def bool) (bool, error) {
 	default:
 		return def, nil
 	}
+}
+
+// readSecret prompts and reads one line with terminal echo turned off, so a
+// pasted or typed API key never appears on screen or in a captured terminal
+// log. Falls back to a plain read when stdin is not a terminal (piped input,
+// tests) since the TCGETS/TIOCGETA ioctl fails there and there is nothing to
+// hide from a non-interactive stream. Any new GOOS needs its own
+// term_*.go with these ioctl constants, same as internal/runner/readKey.
+func readSecret(in *bufio.Reader, label string) (string, error) {
+	fmt.Printf("%s: ", label)
+
+	fd := int(os.Stdin.Fd())
+	var oldState syscall.Termios
+	if _, _, errno := syscall.Syscall(syscall.SYS_IOCTL, uintptr(fd), ioctlReadTermios, uintptr(unsafe.Pointer(&oldState))); errno != 0 {
+		line, err := in.ReadString('\n')
+		if err != nil && line == "" {
+			return "", err
+		}
+		return strings.TrimSpace(line), nil
+	}
+
+	noEcho := oldState
+	noEcho.Lflag &^= syscall.ECHO
+	if _, _, errno := syscall.Syscall(syscall.SYS_IOCTL, uintptr(fd), ioctlWriteTermios, uintptr(unsafe.Pointer(&noEcho))); errno != 0 {
+		return "", errno
+	}
+	defer syscall.Syscall(syscall.SYS_IOCTL, uintptr(fd), ioctlWriteTermios, uintptr(unsafe.Pointer(&oldState)))
+
+	line, err := in.ReadString('\n')
+	fmt.Println()
+	if err != nil && line == "" {
+		return "", err
+	}
+	return strings.TrimSpace(line), nil
 }
 
 // prompt reads one line, returning def when the input is empty.
